@@ -1,0 +1,169 @@
+    Copyright (C)  2026 Pedro Emanuel.
+    Permission is granted to copy, distribute and/or modify this document
+    under the terms of the GNU Free Documentation License, Version 1.3
+    or any later version published by the Free Software Foundation;
+    with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+    A copy of the license is included in the section entitled "GNU
+    Free Documentation License".
+      
+Technical Documentation of TASKS
+Overview
+TASKS represent the fundamental unit of execution and isolation in the system, functioning as comprehensive containers that encapsulate all the resources necessary for the execution of processing units. Each TASK operates as an independent execution domain, providing complete resource isolation.
+
+TASK Container Architecture
+1. Fundamental Components
+Threads
+TASKS serve as containers for one or more threads, where:
+
+Each thread represents a unit of sequential execution
+
+Multiple threads within the same TASK share the TASK's virtual memory space
+
+Threads are scheduled independently by the system scheduler
+
+Thread creation and destruction occur within the context of the TASK
+
+Virtual Memory Space
+Each TASK has its own isolated virtual address space, characterized by:
+
+Exclusive page tables for physical-virtual memory mapping
+
+Dedicated code, data, stack, and heap segments
+
+Complete isolation between different TASKS
+
+Hardware memory protection mechanisms
+
+2. Communication Systems
+KSPC (Kernel Soft Process Communication)
+Optimized communication mechanism for data transfer between TASKS:
+
+Characteristics:
+
+Message-passing based communication
+
+Buffering Kernel-managed
+
+Asynchronous and synchronous operations
+
+Minimal context overhead
+
+Typical Operations:
+
+c
+// Conceptual example
+kspc_send(destination_task, message, size);
+
+kspc_receive(source_task, buffer, size);
+
+KHPC (Kernel Hard Process Communication)
+Mechanism for critical and high-performance communication:
+
+Characteristics:
+
+Shared memory-based communication
+
+Direct access without data copying
+
+Low-latency synchronization mechanisms
+
+Priority for real-time communication
+
+Typical Operations:
+
+c
+// Conceptual example
+khpc_share_memory(destination_task, address, size);
+
+khpc_synchronize(source_task, flags);
+3. Resource Management
+Each TASK manages:
+
+Execution context: registers, program counter, state
+
+Memory resources: allocations, mappings, permissions
+
+Communication channels: KSPC queues, active KHPC regions
+
+Resource limits: quotas, priorities, policies
+
+4. TASK Lifecycle
+text
+CREATION
+
+↓ INITIALIZATION (resource allocation)
+
+↓ EXECUTION (active threads)
+
+↓ SUSPENSION/BLOCKING (when necessary)
+
+↓ TERMINATION (resource release)
+
+5. System Operations
+TASK Creation
+c
+task_id_t task_create(attributes_t *attributes);
+Allocates virtual memory space
+
+Initializes communication structures
+
+Creates main thread
+
+TASK destruction
+c.int task_destroy(task_id_t task);
+
+Terminates all threads
+
+Releases memory resources
+
+Closes communication channels
+
+Thread control
+c.thread_id_t thread_create(task_id_t task, funcao_t entrada);
+
+int thread_terminate(thread_id_t thread);
+
+6. Isolation and Security
+The TASK model guarantees:
+
+Memory isolation: no access between TASKS via virtual memory
+
+Communication isolation: only explicitly established channels
+
+Fault isolation: crashes contained within the originating TASK
+
+Resource isolation: individual limits per TASK
+
+7. Performance Considerations
+KSPC: Optimized for frequent communication with moderate data volumes
+
+KHPC: Maximum performance for large data volumes
+
+Threads: Efficient resource sharing within the TASK
+
+Scheduling: Decisions based on priorities and affinity
+
+Example of Conceptual Use
+c
+// Creation of TASK with specific configurations
+attributes_t attr = {
+
+.max_memory = 1024 * 1024, // 1MB
+
+.priority = HIGH_PRIORITY,
+
+.communication = KSPC | KHPC
+};
+
+task_id_t task = task_create(&attr);
+
+/ Creating threads in the TASK
+thread_create(task, processing_function);
+thread_create(task, communication_function);
+
+/ Establishing communication
+kspc_channel_t chan = kspc_open(destination_task);
+
+khpc_region_t reg = khpc_map(destination_task, size);
+
+This architecture of TASKS as comprehensive containers provides a solid foundation for modern operating systems, combining robust isolation with efficient communication between processing units.
