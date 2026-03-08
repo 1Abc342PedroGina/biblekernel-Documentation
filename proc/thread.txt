@@ -1,0 +1,287 @@
+    Copyright (C)  2026 Pedro Emanuel.
+    Permission is granted to copy, distribute and/or modify this document
+    under the terms of the GNU Free Documentation License, Version 1.3
+    or any later version published by the Free Software Foundation;
+    with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+    A copy of the license is included in the section entitled "GNU
+    Free Documentation License".
+
+Overview
+Threads represent the fundamental unit of execution in the system, functioning as specialized containers that encapsulate activities, control flows, and communication resources. Each thread operates as an independent execution context with its own virtual address space and direct communication capabilities.
+
+THREAD Container Architecture
+1. Fundamental Components
+Activities
+THREADS serve as primary containers for activities, where:
+
+Each THREAD executes a specific sequential activity
+
+Activities represent logical units of processing
+
+Multiple THREADS can execute concurrently
+
+Each THREAD maintains its own independent control flow
+
+Virtual Memory Space
+Each THREAD has its own private virtual address space:
+
+Characteristics:
+
+Dedicated page tables unique per THREAD
+
+Isolated segments for code, data, stack, and heap
+
+Granular memory protection per THREAD
+
+Complete isolation between different THREADS
+
+Memory Structure per THREAD:
+
+text
+[0x00000000 - 0xFFFFFFFF] THREAD virtual space
+
+├── Code (executable)
+
+├── Data (initialized)
+├── BSS (uninitialized)
+
+├── Heap (dynamic allocations)
+
+└── Stack (local stack)
+2. Communication Ports
+KSPC Ports (Kernel Soft Process Communication)
+Lightweight ports for communication between THREADS:
+
+Technical Characteristics:
+
+Numbered virtual ports (0-65535)
+
+Message-passing based communication
+
+Automatic kernel buffering
+
+Non-blocking operations available
+
+Low latency for small messages
+
+KSPC Port Operations:
+
+c
+// Conceptual example
+kspc_port_t port = kspc_open(port_number);
+
+kspc_send(destination_port, message, size);
+kspc_receber(porta_orgem, buffer, tamanho);
+
+kspc_fechar(porta);
+
+KHPC (Kernel Hard Process Communication) Ports
+High-performance ports for critical communication:
+
+Technical Characteristics:
+
+Ports based on shared memory regions
+
+Direct access without data copying
+
+Deterministic latency
+
+Hardware synchronization when available
+
+Priority for real-time communication
+
+KHPC Port Operations:
+
+c
+// Conceptual example
+porta_khpc_t porta = khpc_mapear(porta_numero, tamanho);
+
+khpc_escrever(porta, dados, offset);
+
+khpc_ler(porta, buffer, offset);
+
+khpc_sincronizar(porta, flags);
+3. Thread State
+Each thread maintains its execution context:
+
+MAIN STATES:
+NEW → READY → RUNNING → BLOCKED → TERMINATED
+
+↑ ↓ ↓
+
+└──────────┴────────────┘
+Thread Context:
+
+CPU Registers
+
+Program Counter (PC)
+
+Stack Pointer (SP)
+
+Thread State
+
+Execution Priority
+
+Active Communication Ports
+
+4. Resource Management by Thread
+Exclusive Resources:
+Private virtual memory space
+
+Dedicated execution stack
+
+Register context
+
+Open KSPC/KHPC ports
+
+Unique identifier (THREAD ID)
+
+Shared Resources (via ports):
+KHPC shared memory segments
+
+KSPC message queues
+
+Thread synchronizers
+
+5. Detailed Lifecycle
+Thread Creation
+c.thread_id_t thread_create(activity_t *atv, attributes_t *attr);
+
+Allocates virtual memory space
+
+Configures page tables
+
+Initializes stack and heap
+
+Creates standard communication ports (0-3 reserved)
+
+Prepares initial context
+
+Thread Execution
+c.int thread_execute(thread_id_t thread);
+Loads context into registers
+
+Starts instruction flow
+
+Processes port messages
+
+Manages concurrent activities
+
+Communication between THREADS
+
+// KSPC - Message exchange
+thread_a:
+
+kspc_send(thread_b_port, msg, sizeof(msg));
+
+thread_b:
+
+kspc_receive(thread_a_port, buffer, sizeof(buffer));
+
+// KHPC - Shared memory
+thread_a:
+region = khpc_map(shared_port, 4096);
+region[0] = shared_data;
+
+thread_b:
+region = khpc_map(shared_port, 4096);
+data = region[0]; // Direct Access
+6. Communication Port Model
+KSPC Ports (Lightweight)
+Numbers: 1024-65535 (user), 0-1023 (system)
+
+Buffering: Circular queue per port
+
+Capacity: Configurable (default 64 messages)
+
+Privacy: Private or public ports
+
+KHPC Ports (Heavyweight)
+Numbers: 0-255 (system), 256-65535 (user)
+
+Regions: Direct mapping to virtual memory
+
+Protection: Read/write permissions per THREAD
+
+Synchronization: Atomic primitives or semaphores
+
+7. Complete Conceptual Example
+c
+// Activity definition
+activity_t process_data = {
+
+.input = main_function,
+
+.priority = HIGH,
+
+.real_time = true
+}; // Thread Attributes
+attributes_t attr = {
+
+.memory_size = 2 * 1024 * 1024, // 2MB
+
+.stack_size = 64 * 1024, // 64KB
+
+.default_ports = {
+
+.kspc = {1024, 1025}, // Reserved KSPC ports
+
+.khpc = {10, 11} // Reserved KHPC ports
+
+}
+};
+
+// Thread Creation
+thread_id_t thread1 = thread_create(&process_data, &attr);
+
+// Communication Configuration
+kspc_port_t msg_port = kspc_open(thread1, 1024);
+
+`porta_khpc_t porta_dados = khpc_mapear(thread2, 10, 4096);`
+
+/ Execution
+`thread_executar(thread1);`
+
+/ In the running THREAD
+`void funcao_principal() {`
+
+/ Receive command via KSPC
+`kspc_receber(porta_comando, &cmd, sizeof(cmd));`
+
+/ Process data via KHPC
+`dados_compartilhados = khpc_ler(porta_dados, offset);`
+
+/ Execute main activity
+`resultado = processo(dados_compartilhados);`
+
+/ Return result via KSPC
+`kspc_enviar(porta_resposta, &resultado, sizeof(resultado));`
+
+}
+
+/ Termination
+`thread_terminar(thread1);`
+
+8. Design Considerations
+Isolation: Each THREAD has its own virtual memory
+
+Communication: KSPC ports for messages, KHPC for shared data
+
+Performance: KHPC eliminates copies, KSPC for control
+
+Security: Numbered ports protected by the kernel
+
+Scalability: Independent THREADS can scale across multiple cores
+
+9. Advantages of the Model
+Robust Isolation: Each THREAD has its own address space
+
+Flexible Communication: Specialized ports for different needs
+
+Optimized Performance: KHPC for high performance, KSPC for control
+
+Simplicity: THREAD as a single container for activity and resources
+
+Security: Memory isolation and numbered ports
+
+This model of THREADS as main containers provides a clean architecture where each execution unit has its own resources and communication channels, eliminating the complexity of intermediate structures.
