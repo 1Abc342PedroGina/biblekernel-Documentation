@@ -1,0 +1,71 @@
+    Copyright (C)  2026 Pedro Emanuel.
+    Permission is granted to copy, distribute and/or modify this document
+    under the terms of the GNU Free Documentation License, Version 1.3
+    or any later version published by the Free Software Foundation;
+    with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
+    A copy of the license is included in the section entitled "GNU
+    Free Documentation License".
+
+Important Note Regarding Code Examples
+Notice to Readers
+All code presented in this documentation is for illustrative purposes only and its sole purpose is to facilitate the conceptual understanding of the mechanisms described.
+
+Original Code
+The actual, functional, and actively developing source code is available at:
+
+🔗 https://github.com/1Abc342PedroGina/biblekernel
+
+Differences between the Documentation and the Actual Code
+1. Typing Style
+Documentation: Uses types like uint16_t, uint32_t (Unix/POSIX style) for reader familiarity
+
+Original: Implements its own type system, without Unix dependencies
+
+2. Data Structures
+Documentation: Shows structs with named fields for pedagogical clarity
+
+Original: May use different approaches, optimized for the specific kernel design
+
+3. Naming Conventions
+Documentation: Uses intuitive names like task_id_t, process_t
+
+Original: Follows its own conventions defined in the repository
+
+4. APIs and Functions
+Documentation: Presents conceptual functions like task_create(), kspc_send()
+
+Original: Implements the actual interfaces, which may have distinct parameters and behaviors.
+
+Purpose of the Documentation
+This documentation serves as a conceptual guide to understanding:
+
+The architecture of PROCESSES, TASKS, threads, and activities
+
+The KSPC and KHPC communication mechanisms
+
+The gate + joint model
+
+The hierarchy and relationships between components
+
+The examples are didactic simplifications to convey these ideas as clearly as possible.
+
+For Developers and Contributors
+If you are interested in the actual code:
+
+Access the official repository: https://github.com/1Abc342PedroGina/biblekernel
+
+Explore the actual implementation of the concepts discussed
+
+Consult the actual documentation in the repository
+
+Participate in development through issues and pull requests
+
+Summary
+Aspect Documentation Original Code
+Unix-like types (uint*_t) Kernel-specific types
+Illustrative/pedagogical examples Functional implementation
+Simplified syntax for clarity According to project standards
+Location This biblekernel document
+The documentation shows how the concepts work; the repository shows how they are actually implemented.
+
+To truly understand the project, consult both sources: this documentation for the concepts, and the repository for the concrete implementation.
