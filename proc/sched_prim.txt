@@ -1,0 +1,332 @@
+Execution Hierarchy in the System
+Before detailing the scheduler, it is fundamental to understand the execution hierarchy:
+
+text
+WORK (Set of PROCESSES)
+
+│
+├── PROCESS (Container of TASKS)
+
+│ │
+│ ├── TASK (Execution container with unique ID)
+│ │ │
+│ │ ├── THREAD (Execution unit)
+│ │ │ │
+│ │ │ └── ACTIVITY (Atomic unit executed by the THREAD)
+
+│ │ │
+│ │ └── [Virtual Memory Space, [KSPC/KHPC Ports]
+
+│ │
+│ └── TASK ...
+
+│
+└── PROCESS ...
+ACTIVITY: Atomic unit of processing (what is executed)
+
+THREAD: Unit of execution that processes ACTIVITIES
+
+TASK: Container that encapsulates THREADS, virtual memory, and communication
+
+PROCESS: Container that manages multiple TASKS
+
+WORK: Set of PROCESSES that collaborate towards a common goal
+
+The EEVDF scheduler operates at the THREAD level, deciding which THREAD will execute on each CPU core at any given time.
+
+EEVDF Overview
+EEVDF (Earliest Eligible Virtual Deadline First) is the proportional 
+scheduling algorithm used in the Bible kernel to manage the execution of THREADS.
+Located in the proc/sched_prim.c file, this scheduler ensures fair distribution of CPU time with predictable latency.
+
+EEVDF Philosophy
+
+Unlike schedulers based solely on priorities or fixed time slices, EEVDF introduces two fundamental concepts:
+
+Eligibility: A THREAD can only be scheduled when it reaches an "eligible" state based on its execution history.
+
+Virtual Deadline: Each THREAD receives a virtual deadline that must be respected, providing latency guarantees.
+
+Fundamental Concepts
+1. Virtual Time
+Each THREAD maintains a virtual time that progresses inversely proportional to its weight:
+
+virtual_time = real_time / weight
+Implications:
+
+THREADS with higher weight (higher priority) accumulate virtual time more slowly.
+
+THREADS with lower weight accumulate virtual time faster.
+
+The scheduler always searches for the THREAD with the lowest eligible virtual time.
+
+2. Eligibility
+A THREAD is considered eligible for execution when its current virtual time is greater than or equal to a calculated threshold:
+
+eligible = (current_virtual_time >= minimum_virtual_time)
+The minimum virtual time is dynamic and depends on:
+
+Recent execution time of the THREAD
+
+Thread weight in the queue
+
+Latency guarantees configured in the system
+
+3. Virtual Deadline
+Each THREAD receives a virtual deadline when inserted into the execution queue:
+
+text
+deadline = current_virtual_time + (base_slice / weight)
+Where:
+
+base_slice is the fundamental timeslice of the system (configurable)
+
+The deadline is recalculated whenever the THREAD is (re)inserted into the queue
+
+THREADS with closer deadlines have priority, provided they are eligible
+
+EEVDF Architecture
+Main Data Structures
+Execution Queue per Core (Runqueue)
+Each CPU core maintains its own execution queue:
+
+text
+RUNQUEUE (per core)
+
+├── Current THREAD in execution
+
+├── Executable THREADS (balanced tree)
+
+├── Load statistics
+└── Execution history
+Schedulable Entity
+Each THREAD is represented in the scheduler by an entity that contains:
+
+Identification: ID of the THREAD and the parent TASK
+
+Virtual Time: Current vruntime value
+
+Weight: Derived from the THREAD priority
+
+Deadline: Next virtual deadline for execution
+
+Eligibility: Flag indicating whether it is eligible
+
+Status: Running, executable, blocked, etc.
+
+Scheduling Algorithm
+1. Insertion into the Queue
+When a THREAD becomes executable (wakes up or is created):
+
+text
+1. Update queue time
+2. Calculate initial virtual time based on:
+
+- If it's new: use minimum queue time
+
+- If it's waking up: adjust for the sleeping time
+3. Calculate virtual deadline:
+
+deadline = virtual_time + (base_slice / weight)
+4. Insert into the balanced tree ordered by virtual time
+5. Update total queue load
+2. Selection of the Next THREAD
+The heart of EEVDF - selecting the best THREAD to execute:
+
+text
+1. Get the THREAD with the shortest virtual time in the queue
+2. Check the eligibility of each candidate THREAD
+3. Among the eligible ones, select the one with the shortest deadline
+4. If none are eligible, use the one with the shortest virtual time
+5. Prepare the selected THREAD for execution
+3. Eligibility Check
+A THREAD is eligible If:
+
+text
+difference = deadline - virtual_time
+limit = difference / 2
+eligible = (virtual_time + limit) >= minimum_queue_time
+This ensures that THREADS that are far behind the minimum queue time cannot execute until they get closer.
+
+4. Update During Execution
+While a THREAD is running:
+
+text
+At each time tick:
+
+1. Calculate executed_time = now - start_execution
+2. Update virtual_time += (executed_time / weight)
+3. Update THREAD statistics
+4. Check if deadline has passed:
+
+If virtual_time > deadline:
+
+Mark for re-evaluation on the next tick
+5. Update minimum queue time
+5. Removal from Queue
+When a THREAD blocks or is suspended
+
+text
+1. Update final virtual_time
+2. Remove from execution tree
+3. Update queue load
+4. If it was the current THREAD, schedule the next one
+Configurable Parameters
+The scheduler exposes parameters adjustable by the administrator:
+
+Parameter Description Impact
+base_slice Fundamental timeslice (default: 3ms) Lower = more responsive, higher = more throughput
+latency_threshold Limit for latency warnings Helps detect scheduling problems
+maximum_migration Maximum number of THREADS migrated at a time Controls load balancing overhead
+EEVDF Features
+The scheduler can be configured with different features enabled/disabled:
+
+Feature Description When to use
+EEVDF Use EEVDF algorithm vs. Traditional Always Active (default)
+PLACE_NEXT Place threads next to the current one. Improves cache affinity.
+PLACEMENT_DEAD Use a deadline to place new threads. Improves predictability.
+HANDLE_SLEEPERS Special handling for sleeping threads. Prevents starvation.
+Core Balancing
+EEVDF also manages load balancing between multiple cores:
+
+text
+At each balancing period:
+
+1. Identify the most and least loaded cores.
+2. Calculate whether it is worthwhile to migrate threads.
+3. Select migration candidates based on:
+
+- Cache affinity
+- Migration cost
+- Thread weight
+4. Execute migrations in a controlled manner. Interaction with the System Hierarchy
+THREAD Level
+The scheduler operates directly on the threads:
+
+c
+// Conceptual example of how the scheduler sees a thread
+THREAD:
+- ID: 0x7f3a2b1c
+
+- Parent TASK: 0x3a1b2c
+
+- Virtual Time: 1,452,789 cycles
+
+- Weight: 1024 (normal priority)
+
+- Deadline: 1,455,789 cycles
+
+- Eligible: yes
+
+- State: executable
+TASK Level
+Each TASK contains multiple THREADS that share memory and resources:
+
+text
+TASK (ID: 0x3a1b2c)
+
+├── Main THREAD (tid: 0x7f3a2b1c) - running
+├── Worker THREAD (tid: 0x8b4c3d2e) - blocked in I/O
+└── Helper THREAD (tid: 0x9d5e4f3a) - executable
+The scheduler manages each THREAD individually, but respects TASK limits.
+
+PROCESS Level
+PROCESSES group TASKS with common policies:
+
+PROCESS "WebServer" (pid: 1234)
+
+├── Main TASK (limit: 100ms per slice)
+
+├── Logging TASK (low priority)
+
+└── Caching TASK (high priority)
+WORK Level
+WORKS are sets of PROCESSES that collaborate:
+
+WORK "DatabaseSystem"
+
+├── PROCESS "QueryProcessor"
+
+├── PROCESS "StorageEngine"
+
+└── PROCESS "ConnectionManager"
+The WORK may have collective scaling requirements that influence individual THREADS.
+
+Practical Conceptual Example
+Scenario: Web Server with Multiple Threads
+text
+PROCESS "WebServer" (WORK "Application")
+└── TASK "HTTPConnections"
+├── THREAD 1 (weight: 1024, deadline: 1000)
+├── THREAD 2 (weight: 1024, deadline: 1200)
+├── THREAD 3 (weight: 512, deadline: 2500)
+└── THREAD 4 (weight: 2048, deadline: 800)
+Time t = 1000:
+
+THREAD 4 has the shortest deadline (800) and is eligible → executed first
+
+THREAD 1 has Time period 1,000, but not yet eligible
+
+Time period t = 1,200:
+
+THREAD 4 has already executed, now THREAD 2 has a shorter eligible time period
+
+THREAD 1 has become eligible, but has a longer time period
+
+Time period t = 2,000:
+
+THREAD 3, with a lower weight, has accumulated less virtual time
+
+Despite having a longer time period, it becomes eligible and executes
+
+Advantages of EEVDF
+
+1. Latency Isolation: Threads with real-time requirements have their time periods respected, even with high system load.
+
+2. Proportional Fairness: Threads receive CPU time proportionally to their weights, without starvation.
+
+3. Predictability: The time period mechanism makes system behavior more predictable for sensitive applications.
+
+4. Adaptability
+Adjustable parameters allow optimization for different workloads:
+
+Low latency for interactive applications
+
+High throughput for batch processing
+
+Balance between the two
+
+5. Scalability
+The O(log n) insertion/removal algorithm scales well with thousands of threads.
+
+Implementation Considerations
+Complexity
+Insertion/removal: O(log n) in the balanced tree
+
+Selection: O(log n) in the worst case, O(1) average with cache
+
+Update: O(1) per tick
+
+Overhead
+Virtual time calculations and deadlines
+
+Balanced tree maintenance
+
+Balancing between cores
+
+Trade-offs
+Precision vs. Overhead: More frequent calculations = better precision, higher overhead
+
+Responsiveness vs. Throughput: Smaller slices = more responsive, less throughput
+
+Fairness vs. Location: Migrating Threads to Load Balancing Harms Cache Affinity
+
+Conclusion
+EEVDF represents a sophisticated approach to thread scheduling, balancing fairness, latency, and throughput.
+Its implementation in the kernel Bible (proc/sched_prim.c) provides a solid foundation for systems requiring predictable and efficient behavior, from high-performance servers to embedded systems with real-time requirements.
+
+Understanding the complete hierarchy (ACTIVITY → THREAD → TASK → PROCESS → WORK) It is essential 
+to understand how the scheduler interacts with the different levels of abstraction of the system.
+
+For complete implementation details, see the proc/sched_prim.c file in the official repository:
+https://github.com/1Abc342PedroGina/biblekernel
