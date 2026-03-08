@@ -1,0 +1,404 @@
+Technical Documentation of PROCESSES
+Overview
+PROCESSES represent the fundamental unit of resource isolation and management in the system, functioning as the highest-level containers that encapsulate TASKS (which in turn are the overarching execution containers). Each PROCESS manages multiple TASKS, providing an additional layer of organization and control.
+
+System Hierarchy
+text
+PROCESS (Highest-level container)
+├── TASK 1 (Comprehensive container with unique ID)
+│ ├── Threads
+│ ├── Own Virtual Memory Space
+│ ├── KSPC Ports
+│ └── KHPC Ports
+│
+
+├── TASK 2 (Comprehensive container with unique ID)
+│ ├── Threads
+│ ├── Own Virtual Memory Space
+│ ├── KSPC Ports
+│ └── KHPC Ports
+│
+└── TASK N (Comprehensive container with unique ID)
+├── Threads
+├── Own Virtual Memory Space
+├── KSPC Ports
+└── KHPC Ports
+PROCESS Architecture
+1. PROCESS Components
+TASK Management
+The PROCESS serves as a container for multiple TASKS, where:
+
+Each TASK has its own unique ID in the system
+
+TASK is the comprehensive container that encapsulates threads, virtual memory, and communication
+
+PROCESS manages the lifecycle of TASKS
+
+TASKS within the same PROCESS can have privileged communication policies
+
+c.typedef struct process {
+
+/ PROCESS identification
+
+pid_t pid; // Unique process ID
+
+char name[64]; // Process Name
+
+/ Managed Tasks Table
+
+struct {
+
+task_id_t ids[MAX_TASKS]; // Unique IDs of the Tasks
+
+task_t *tasks[MAX_TASKS]; // Pointers to the Tasks
+
+uint32_t num_tasks; // Current number of Tasks
+
+} tasks;
+
+/ Process Limits and Quotas
+process_limits_t limits;
+
+/ Process State
+process_state_t state;
+
+/ Task Grouping Policies
+grouping_policies_t policies;
+
+} process_t;
+2. Creating and Managing TASKS in a PROCESS
+Creating a TASK within a PROCESS
+c
+// Creates a new TASK within a PROCESS
+task_id_t process_create_task(
+process_t *proc,
+attributes_task_t *attr_task
+) {
+
+/ Validates process limits
+
+if (proc->tasks.num_tasks >= proc->limits.max_tasks) {
+
+return TASKS_LIMIT_ERROR;
+
+}
+
+// Creates the TASK (comprehensive container)
+task_id_t task_id = task_create(attr_task);
+
+// Associates the TASK with the PROCESS
+proc->tasks.ids[proc->tasks.num_tasks] = task_id;
+
+proc->tasks.tasks[proc->tasks.num_tasks] = get_task(task_id);
+
+proc->tasks.num_tasks++;
+
+/ // Configures communication between TASKS of the same PROCESS
+
+task_configure_group(task_id, proc->pid);
+
+return task_id;
+
+}
+
+// Example of use
+task_attributes_t attr = {
+
+.max_memory = 1024 * 1024, // 1MB per TASK
+
+.priority = HIGH_PRIORITY,
+
+.communication = KSPC | KHPC,
+
+.isolation_policy = DEFAULT_ISOLATION
+};
+
+task_id_t task1 = process_create_task(my_process, &attr);
+
+task_id_t task2 = process_create_task(my_process, &attr);
+
+3. Port + Joint System between TASKS
+The great innovation is the port + joint system that allows flexible communication between TASKS, whether from the same PROCESS or from different PROCESSES.
+
+Port + Joint Structure
+c.typedef struct port_communication {
+
+/ Identification
+
+uint16_t number; // Port number (0-65535)
+
+task_id_t owner_task; // TASK that owns the port
+
+/ Communication type
+communication_mode_t mode; // KSPC, KHPC or HYBRID
+
+/ Communication joint (KSPC + KHPC integrated)
+joint_t joint {
+
+/ KSPC component (message passing)
+
+struct {
+message_queue_t queue;
+
+size_t max_message;
+uint32_t msg_controle;
+
+} soft;
+
+/ KHPC component (shared memory)
+
+struct {
+
+void* regiao_compartilhada;
+size_t tamanho;
+permissions_t permissoes;
+
+} hard;
+
+/ Integrated synchronization
+synchronizer_t sinc;
+
+/ Joint statistics
+estatisticas_junta_t stats;
+
+} junta;
+
+/ Tasks connected to this port
+task_id_t tasks_conectadas[MAX_CONEXOES];
+
+uint32_t num_conectadas;
+
+} porta_comunicacao_t;
+
+4. Communication Model between TASKS
+Supported Communication Types
+1. Pure KSPC (Soft): For control messages and commands
+
+c
+// TASK A sends command to TASK B via KSPC
+kspc_send(task_b, command, sizeof(command));
+
+// TASK B receives command
+kspc_receive(task_a, buffer, sizeof(buffer));
+
+2. Pure KHPC (Hard): For large volumes of data
+
+c
+// TASK A shares memory with TASK B
+region_id_t reg = khpc_share_memory(task_b, data, size);
+
+// TASK B accesses directly
+processed_data = khpc_access(reg);
+
+3. Hybrid Mode (Integrated KSPC + KHPC): The best of both worlds
+
+c
+
+//TASK A prepares integrated communication
+hybrid_port_t port = open_hybrid_port(
+task_b,
+
+8080,
+KSPC_buffer_size,
+khpc_region_size
+
+);
+
+// Integrated sending: KSPC command + KHPC data
+kspc_header_t cmd = { .type = PROCESS_DATA };
+
+void *data = get_bulk_data();
+
+send_integrated(port, &cmd, data, data_size);
+
+// TASK B receives in an integrated way
+kspc_header_t received_cmd;
+
+void *received_data;
+
+size_t tam;
+
+receive_integrated(port, &received_cmd, &received_data, &tam);
+
+5. Complete Example: PROCESS with Multiple TASKS
+c
+// 1. Creating the PROCESS
+process_t *analysis_system = process_create("Analysis_System", &limits);
+
+// 2. Creating multiple TASKS within the PROCESS
+// TASK 1: Data Collection
+task_attributes_t collection_attribute = {
+
+.max_memory = 2 * 1024 * 1024,
+
+.priority = HIGH_PRIORITY,
+
+.communication = KSPC | KHPC
+};
+
+task_id_t collection_task = process_create_task(analysis_system, &collection_attribute);
+
+// TASK 2: Processing
+attributes_task_t attr_processa = {
+.memoria_max = 16 * 1024 * 1024,
+
+.prioridade = PRIORIDADE_ALTA,
+
+.comunicacao = KSPC | KHPC
+};
+
+task_id_t task_processa = processo_criar_task(sistema_analise, &attr_processa);
+
+// TASK 3: Storage
+attributes_task_t attr_armazena = {
+
+.memoria_max = 4 * 1024 * 1024,
+
+.prioridade = PRIORIDADE_NORMAL,
+
+.comunicacao = KSPC | KHPC
+};
+
+task_id_t task_armazena = processo_criar_task(sistema_analise, &attr_armazena);
+
+// 3. Creating threads within TASKS
+thread_create(task_coleta, funcao_coleta_sensores);
+
+thread_create(task_coleta, funcao_filtragem_inicial);
+
+thread_create(task_processa, funcao_analise_estatistica);
+
+thread_create(task_processa, funcao_ml_inferencia);
+
+thread_create(task_armazena, funcao_persistencia);
+
+thread_create(task_armazena, funcao_exportacao);
+
+/ 4. Configuring ports + connections between TASKS
+
+// KSPC port between Collect and Process (for commands)
+porta_t port_commands = port_open(
+task_coleta,
+task_processa,
+1000,
+MODO_KSPC
+);
+
+// KHPC Port between Process and Store (for bulk data)
+port_t data_port = open_port(
+processing_task,
+storing_task,
+2000,
+KHPC_MODE
+);
+
+/ Hybrid Port between Collection and Store (control + data)
+port_t hybrid_port = open_hybrid_port(
+collection_task,
+storing_task,
+3000,
+KHPC_BUFFER_SIZE,
+KHPC_REGION_SIZE
+);
+
+/ 5. Integrated Workflow
+void workflow() {
+
+/ Collection Task sends data via KHPC to Process
+sensor_data_t *data = collect_data();
+
+khpc_share_memory(process_task, data, sizeof(*data));
+
+// Task Coleta sends KSPC command to start processing
+command_t cmd = { .type = START_ANALYSIS };
+
+kspc_send(task_processa, &cmd, sizeof(cmd));
+
+/ Task Processa processes and sends results via KHPC to Armazena
+resultados_t *res = process_data();
+
+khpc_share_memory(task_armazena, res, sizeof(*res));
+
+/ Task Processa confirms via KSPC
+
+kspc_send(task_armazena, &(command_t){.type = DATA_READY}, sizeof(command_t));
+
+/ Task Armazena persists and returns status via hybrid port
+status_t status = persist_data(res);
+
+// Using the hybrid port: status via KSPC, additional data via KHPC
+send_integrated(hybrid_port, &status, additional_report, size);
+
+6. Advantages of the PROCESS → TASK Architecture
+Clear Hierarchical Organization
+
+PROCESS: administrative/managerial unit
+
+TASK: execution unit with its own resources
+
+Threads: sequential execution units within the TASK
+
+Multi-Level Isolation
+
+Between PROCESSES: complete isolation
+
+Between TASKS: configurable isolation
+
+Controlled sharing via ports + joints
+
+Flexible Communication
+
+KSPC: for messages and control
+
+KHPC: for bulk data
+
+Hybrid Mode: integration of both
+
+Resource Management
+
+Limits per PROCESS (total TASKS, aggregated memory)
+
+Limits per TASK (memory, priority, channels)
+
+Scalability
+
+Multiple TASKS per PROCESS
+
+Multiple threads per TASK
+
+Optimized communication between TASKS of the same PROCESS
+
+7. System Operations
+
+// Process Creation
+process_t *p = process_create(name, limits);
+
+// Task Creation in the Process
+task_id_t t = process_create_task(p, attributes);
+
+// Thread Creation in the Task
+thread_id_t th = thread_create(t, function);
+
+// Communication between Tasks
+port_t port = port_open(source_task, destination_task, number, mode);
+
+send_integrated(port, control, data, size);
+receive_integrated(port, &control, buffer, &size);
+
+// Destruction
+thread_terminate(th);
+task_destroy(t);
+process_destroy(p);
+
+Conclusion
+This architecture establishes a clear and powerful hierarchy:
+
+PROCESS: Highest-level organizational container
+
+TASK: Comprehensive execution container (with unique ID, own virtual memory, threads, KSPC and KHPC)
+
+Threads: Execution units within the TASK
+
+The port + joint system integrating KSPC and KHPC allows flexible and efficient communication between TASKS,
+whether from the same PROCESS  or from different PROCESSES, 
+combines the best of message passing with shared memory in a cohesive and powerful model.
