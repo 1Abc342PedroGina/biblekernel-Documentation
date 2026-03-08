@@ -5,7 +5,7 @@
     with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
     A copy of the license is included in the section entitled "GNU
     Free Documentation License".
-
+ 
 Overview
 Threads represent the fundamental unit of execution in the system, functioning as specialized containers that encapsulate activities, control flows, and communication resources. Each thread operates as an independent execution context with its own virtual address space and direct communication capabilities.
 
